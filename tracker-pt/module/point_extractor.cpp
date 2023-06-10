@@ -121,19 +121,25 @@ void PointExtractor::filter_single_channel(const cv::Mat& orig_frame, float r, f
         cv::transform(orig_frame, dest, cv::Mat(cv::Matx13f(b, g, r)));
     else
     {
+        float key_bgr[3]{ std::max(b, 0.0f), std::max(g, 0.0f), std::max(r, 0.0f) };
+        constexpr float minusinv255 = -1.0f / 255;
+        float nonkey_255_bgr[3] = {std::max(b * minusinv255, 0.0f), std::max(g * minusinv255, 0.0f), std::max(r * minusinv255, 0.0f)};
+        int bc = 0;
+        uint32_t store = 0;
         for (int i = 0; i < orig_frame.rows; i++)
         {
-            cv::Vec3b const* const __restrict orig_ptr = orig_frame.ptr<cv::Vec3b>(i);
+            const cv::Vec3b* const __restrict orig_ptr = orig_frame.ptr<cv::Vec3b>(i);
             uint8_t* const __restrict dest_ptr = dest.ptr(i);
             for (int j = 0; j < orig_frame.cols; j++)
             {
                 // get the intensity of the key color (i.e. +ve coefficients)
-                uchar blue = orig_ptr[j][0], green = orig_ptr[j][1], red = orig_ptr[j][2];
-                float key = std::max(b, 0.0f) * blue + std::max(g, 0.0f) * green + std::max(r, 0.0f) * red;
+                const uchar blue = orig_ptr[j][0], const green = orig_ptr[j][1], const red = orig_ptr[j][2];
+                const float key = key_bgr[0] * blue + key_bgr[1] * green + key_bgr[2] * red;
                 // get the intensity of the non-key color (i.e. -ve coefficients)
-                float nonkey = std::max(-b, 0.0f) * blue + std::max(-g, 0.0f) * green + std::max(-r, 0.0f) * red;
+                const float nonkey_255 = nonkey_255_bgr[0] * blue + nonkey_255_bgr[1] * green + nonkey_255_bgr[2] * red;
                 // the result is key color minus non-key color inversely weighted by key colour intensity
-                dest_ptr[j] = std::max(0.0f, std::min(255.0f, key - (255.0f - key) / 255.0f * nonkey));
+                const float result = key + (key - 255.0f) * nonkey_255;
+                dest_ptr[j] = std::max(0.0f, result + 0.5f);
             }
         }
     }
