@@ -31,7 +31,7 @@ void simconnect::run()
         return;
     }
 
-    constexpr unsigned sleep_time = 5;
+    constexpr unsigned sleep_time = 1;
 
     while (!isInterruptionRequested())
     {
@@ -43,29 +43,18 @@ void simconnect::run()
             qDebug() << "fsx: connect failed, retry in" << sleep_time << "seconds...";
         else
         {
-            if (!SUCCEEDED(hr = simconnect_subscribe(handle, 0, "1sec")))
-                qDebug() << "fsx: can't subscribe to frame event:" << (void*)hr;
-            else
+            while (!isInterruptionRequested())
             {
-                while (!isInterruptionRequested())
+                WaitForSingleObject(event, 100);
+
+                if (reconnect.load(std::memory_order_relaxed))
+                    break;
+
+                if (!SUCCEEDED(hr = simconnect_calldispatch(handle, event_handler, (void*)this)))
                 {
-                    constexpr int max_idle_ms = 2000;
-
-                    if (WaitForSingleObject(event, max_idle_ms) != WAIT_OBJECT_0)
-                    {
-                        qDebug() << "fsx: timeout reached, reconnecting";
-                        break;
-                    }
-
-                    if (reconnect.load(std::memory_order_relaxed))
-                        break;
-
-                    if (!SUCCEEDED(hr = simconnect_calldispatch(handle, event_handler, (void*)this)))
-                    {
-                        qDebug() << "fsx: calldispatch failed:" << (void*)hr;
-                        break;
-                    }
-                 }
+                    qDebug() << "fsx: calldispatch failed:" << (void*)hr;
+                    break;
+                }
             }
 
             QMutexLocker l(&mtx);
